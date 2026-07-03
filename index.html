@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>오목 대전</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1a1611">
+<meta property="og:title" content="오목 대전">
+<meta property="og:description" content="친구와 온라인 오목 한 판! 링크 누르면 바로 대국 시작.">
+<style>
+  :root{
+    --wood:#d9a05b; --wood-dk:#7a5230; --bg:#1a1611; --panel:#2a241b;
+    --ink:#f0e8d8; --dim:#9a8f7a; --accent:#e8a33d; --danger:#d9534f; --ok:#5cb85c;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{
+    min-height:100vh; background:var(--bg); color:var(--ink);
+    font-family:"Segoe UI", system-ui, sans-serif;
+    display:flex; flex-direction:column; align-items:center;
+    -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
+    overscroll-behavior:none; touch-action:manipulation;
+  }
+  .screen{width:100%; max-width:480px; padding:24px 20px calc(24px + env(safe-area-inset-bottom)); display:none; flex-direction:column; align-items:center}
+  .screen.on{display:flex}
+  h1{font-size:44px; margin:40px 0 6px; letter-spacing:.05em}
+  h1 .go{color:var(--accent)}
+  .sub{color:var(--dim); font-size:14px; margin-bottom:40px; letter-spacing:.15em}
+  .btn{
+    width:100%; max-width:320px; padding:16px; margin:7px 0; font-size:17px; font-weight:700;
+    background:var(--panel); color:var(--ink); border:1px solid #4a4032; border-radius:14px;
+    cursor:pointer; text-align:center;
+  }
+  .btn:active{background:#3a3226}
+  .btn.primary{background:var(--accent); color:#241a08; border-color:#f0be6a}
+  .btn.ghost{background:transparent; border-color:#3a3226; color:var(--dim); font-weight:400; font-size:14px; padding:12px}
+  .btn:disabled{opacity:.45}
+  input.code{
+    width:100%; max-width:320px; padding:14px; margin:6px 0; font-size:24px; text-align:center;
+    letter-spacing:.4em; text-transform:uppercase; font-weight:700;
+    background:#141109; color:var(--ink); border:1px solid #4a4032; border-radius:12px; outline:none;
+  }
+  .note{color:var(--dim); font-size:13px; line-height:1.8; text-align:center; margin-top:10px}
+  .note b{color:var(--accent)}
+  a.note{color:var(--dim); text-decoration:none}
+  #gamewrap{position:relative; width:100%; max-width:480px}
+  canvas{display:block; width:100%; touch-action:none}
+  .hud{
+    position:absolute; left:0; right:0; top:0; padding:10px 14px;
+    display:flex; justify-content:space-between; align-items:center; pointer-events:none;
+    font-size:14px; font-weight:700;
+  }
+  .hud .roomtag{font-weight:400; color:var(--dim); font-size:12px; letter-spacing:.1em}
+  #b-confirm{
+    display:none; position:absolute; left:50%; transform:translateX(-50%);
+    bottom:calc(10px + env(safe-area-inset-bottom));
+    width:auto; max-width:220px; padding:12px 44px; margin:0;
+  }
+  #overlay{
+    position:absolute; inset:0; display:none; flex-direction:column; align-items:center; justify-content:center;
+    background:rgba(10,8,4,.72); text-align:center; padding:20px;
+  }
+  #overlay.on{display:flex}
+  #overlay .big{font-size:38px; font-weight:900; margin-bottom:8px}
+  #overlay .small{color:var(--dim); margin-bottom:24px; font-size:14px; line-height:1.7}
+  #toast{
+    position:fixed; bottom:calc(30px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%);
+    background:#000c; color:var(--ink); padding:10px 18px; border-radius:20px; font-size:14px;
+    opacity:0; transition:opacity .3s; pointer-events:none; white-space:nowrap; z-index:50;
+  }
+  #toast.on{opacity:1}
+  .spin{
+    width:34px; height:34px; border:3px solid #4a4032; border-top-color:var(--accent);
+    border-radius:50%; animation:sp 1s linear infinite; margin:16px auto;
+  }
+  @keyframes sp{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion: reduce){ .spin{animation-duration:2s} }
+</style>
+</head>
+<body>
+
+<!-- ══════ 메뉴 ══════ -->
+<div id="scr-menu" class="screen on">
+  <h1>오목 <span class="go">대전</span></h1>
+  <div class="sub">FIVE IN A ROW · 턴제 대전</div>
+  <button class="btn primary" id="b-online">🌐 온라인 대전 — 친구와 한 판</button>
+  <button class="btn" id="b-local">📱 한 폰으로 대결</button>
+  <button class="btn" id="b-ai">🤖 혼자 연습 (AI)</button>
+  <div class="note">가로·세로·대각선으로<br>먼저 다섯 개를 이으면 승리!</div>
+  <a class="note" href="https://kentc.github.io/arcade/" style="margin-top:34px">← 아케이드 허브</a>
+</div>
+
+<!-- ══════ 온라인 설정 ══════ -->
+<div id="scr-online" class="screen">
+  <h1 style="font-size:30px">온라인 대전</h1>
+  <div class="sub">방 코드로 연결</div>
+  <button class="btn primary" id="b-create">방 만들기</button>
+  <div class="note" style="margin:14px 0">— 또는 —</div>
+  <input class="code" id="in-code" maxlength="4" placeholder="CODE" autocomplete="off">
+  <button class="btn" id="b-join">코드로 입장</button>
+  <button class="btn ghost" id="b-back1">← 메뉴로</button>
+  <div class="note" id="online-note"></div>
+</div>
+
+<!-- ══════ 대기실 ══════ -->
+<div id="scr-wait" class="screen">
+  <h1 style="font-size:30px">대기 중</h1>
+  <div class="sub">친구를 기다리는 중...</div>
+  <div style="font-size:52px; font-weight:900; letter-spacing:.35em; color:var(--accent); margin:10px 0" id="wait-code"></div>
+  <div class="spin"></div>
+  <button class="btn primary" id="b-share">📤 친구에게 초대 링크 보내기</button>
+  <button class="btn ghost" id="b-back2">← 취소</button>
+  <div class="note">친구가 링크를 누르거나 코드를 입력하면<br>자동으로 대국이 시작됩니다</div>
+</div>
+
+<!-- ══════ 게임 ══════ -->
+<div id="scr-game" class="screen" style="padding:0">
+  <div id="gamewrap">
+    <canvas id="cv"></canvas>
+    <div class="hud">
+      <span id="hud-left"></span>
+      <span class="roomtag" id="hud-room"></span>
+      <span id="hud-right"></span>
+    </div>
+    <button class="btn primary" id="b-confirm">확인 ✓</button>
+    <div id="overlay">
+      <div class="big" id="ov-title"></div>
+      <div class="small" id="ov-sub"></div>
+      <button class="btn primary" id="b-rematch" style="max-width:260px">다시 한 판</button>
+      <button class="btn ghost" id="b-exit" style="max-width:260px">메뉴로 나가기</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+'use strict';
+/* ═══════════════════════════════════════════════════════
+   오목 대전 v1 — 턴제 네트워크 게임 플랫폼 2호
+   구조: [보드] [렌더] [입력(고스트+확정)] [AI] [TurnNet] [게임 흐름]
+═══════════════════════════════════════════════════════ */
+
+// ── Supabase 설정 (키를 넣으면 온라인 모드 활성화) ──
+const SUPA_URL = '';   // 예: https://xxxx.supabase.co
+const SUPA_KEY = '';   // anon public key
+
+// ═══════ 기본 상수 ═══════
+const W=400, H=500;
+const N=15;                       // 15x15 교차점
+const GX=24, GY=76;               // 격자 원점 (좌상단 교차점)
+const CELL=(W-GX*2)/(N-1);        // 교차점 간격
+const STONE_R=CELL*0.44;
+const WOOD={x:GX-14, y:GY-14, w:(N-1)*CELL+28, h:(N-1)*CELL+28};
+const DIRS=[[1,0],[0,1],[1,1],[1,-1]];
+const cv = document.getElementById('cv');
+const g = cv.getContext('2d');
+let DPR = Math.min(2, window.devicePixelRatio||1);
+cv.width = W*DPR; cv.height = H*DPR;
+g.scale(DPR,DPR);
+
+// ═══════ 게임 상태 ═══════
+let board=[];             // board[y][x] = 0빈칸 / 1흑 / 2백
+let moves=[];             // {x,y,c}
+let turn=1;               // 1=흑, 2=백
+let gameMode=null;        // 'ai' | 'local' | 'online'
+let myColor=1;            // 온라인/AI에서 나의 색 (1흑 2백)
+let gameOver=false;
+let winLine=null;         // 승리한 돌들 [[x,y],...]
+let ghost=null;           // 확정 대기 위치 {x,y}
+let dragging=false, confirmCand=false;
+let net=null, roomCode='';
+let rematchMe=false, rematchOpp=false;
+
+function resetGame(){
+  board=[];
+  for(let y=0;y<N;y++) board.push(new Array(N).fill(0));
+  moves=[]; turn=1; gameOver=false; winLine=null; ghost=null;
+  dragging=false; confirmCand=false;
+  rematchMe=false; rematchOpp=false;
+  $('b-confirm').style.display='none';
+  $('overlay').classList.remove('on');
+}
+function inB(x,y){ return x>=0 && x<N && y>=0 && y<N; }
+
+// ═══════ 사운드 (WebAudio 합성) ═══════
+let AC=null, noiseBuf=null;
+function ensureAudio(){
+  if(!AC){
+    AC = new (window.AudioContext||window.webkitAudioContext)();
+    noiseBuf = AC.createBuffer(1, AC.sampleRate*0.05, AC.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for(let i=0;i<d.length;i++) d[i] = (Math.random()*2-1) * Math.pow(1-i/d.length, 2);
+  }
+  if(AC.state==='suspended') AC.resume();
+}
+// 돌 놓는 소리: 타격 노이즈 + 짧은 고음 틱
+function placeSnd(){
+  if(!AC) return;
+  const now=AC.currentTime;
+  const src=AC.createBufferSource(); src.buffer=noiseBuf;
+  const bp=AC.createBiquadFilter(); bp.type='bandpass';
+  bp.frequency.value = 1900+Math.random()*600; bp.Q.value=1.2;
+  const g1=AC.createGain();
+  g1.gain.setValueAtTime(0.8, now);
+  g1.gain.exponentialRampToValueAtTime(0.001, now+0.05);
+  src.connect(bp).connect(g1).connect(AC.destination); src.start(now);
+  const o=AC.createOscillator(); o.type='sine';
+  o.frequency.setValueAtTime(2600+Math.random()*500, now);
+  o.frequency.exponentialRampToValueAtTime(1800, now+0.035);
+  const g2=AC.createGain();
+  g2.gain.setValueAtTime(0.25, now);
+  g2.gain.exponentialRampToValueAtTime(0.001, now+0.04);
+  o.connect(g2).connect(AC.destination); o.start(now); o.stop(now+0.05);
+}
+function buzz(){
+  if(!AC) return;
+  const t=AC.currentTime, o=AC.createOscillator(), ga=AC.createGain();
+  o.type='square'; o.frequency.setValueAtTime(120,t);
+  o.frequency.exponentialRampToValueAtTime(75,t+0.11);
+  ga.gain.setValueAtTime(0.1,t); ga.gain.exponentialRampToValueAtTime(0.001,t+0.12);
+  o.connect(ga).connect(AC.destination); o.start(t); o.stop(t+0.13);
+}
+function winSnd(){
+  if(!AC) return;
+  [0,4,7,12].forEach((n,i)=>{
+    const t=AC.currentTime+i*0.12, o=AC.createOscillator(), ga=AC.createGain();
+    o.type='triangle'; o.frequency.value=523*Math.pow(2,n/12);
+    ga.gain.setValueAtTime(0.18,t); ga.gain.exponentialRampToValueAtTime(0.001,t+0.25);
+    o.connect(ga).connect(AC.destination); o.start(t); o.stop(t+0.3);
+  });
+}
+
+// ═══════ 승리 판정 ═══════
+function checkWin(x,y,c){
+  for(const [dx,dy] of DIRS){
+    const cells=[[x,y]];
+    let i=1;
+    while(inB(x+dx*i, y+dy*i) && board[y+dy*i][x+dx*i]===c){ cells.push([x+dx*i, y+dy*i]); i++; }
+    i=1;
+    while(inB(x-dx*i, y-dy*i) && board[y-dy*i][x-dx*i]===c){ cells.unshift([x-dx*i, y-dy*i]); i++; }
+    if(cells.length>=5) return cells;
+  }
+  return null;
+}
+
+// ═══════ 착수 ═══════
+function place(x,y,c,isLocal){
+  if(gameOver || !inB(x,y) || board[y][x]!==0) return false;
+  board[y][x]=c; moves.push({x,y,c});
+  placeSnd();
+  ghost=null; confirmCand=false; $('b-confirm').style.display='none';
+  if(isLocal && gameMode==='online' && net) net.send('move', {x, y, n:moves.length-1});
+  const win=checkWin(x,y,c);
+  if(win){ winLine=win; showResult(c); }
+  else if(moves.length===N*N){ showResult(0); }
+  else {
+    turn = c===1 ? 2 : 1;
+    if(gameMode==='ai' && turn!==myColor) setTimeout(aiMove, 280);
+  }
+  updateHud();
+  return true;
+}
+
+// ═══════ 렌더 ═══════
+function px(x){ return GX + x*CELL; }
+function py(y){ return GY + y*CELL; }
+function drawStone(x,y,c,alpha){
+  const sx=px(x), sy=py(y);
+  g.save(); g.globalAlpha=alpha;
+  g.beginPath(); g.arc(sx, sy+1.5, STONE_R, 0, 7);
+  g.fillStyle='rgba(0,0,0,0.3)'; g.fill();
+  g.beginPath(); g.arc(sx, sy, STONE_R, 0, 7);
+  g.fillStyle = c===1 ? '#1c1c22' : '#f2f0ea'; g.fill();
+  g.beginPath(); g.arc(sx-STONE_R*0.3, sy-STONE_R*0.38, STONE_R*0.35, 0, 7);
+  g.fillStyle = c===1 ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.85)'; g.fill();
+  g.strokeStyle = c===1 ? '#000' : '#c8c4b8'; g.lineWidth=1;
+  g.beginPath(); g.arc(sx, sy, STONE_R, 0, 7); g.stroke();
+  g.restore();
+}
+function draw(){
+  g.fillStyle='#1a1611'; g.fillRect(0,0,W,H);
+  // 안내 문구 (바둑판 위)
+  if(!gameOver){
+    g.font='bold 14px sans-serif'; g.textAlign='center';
+    const myTurn = (gameMode==='local') || (turn===myColor);
+    g.fillStyle = myTurn ? '#e8a33d' : '#9a8f7a';
+    let msg;
+    if(ghost && myTurn) msg='같은 곳을 한 번 더 탭하면 확정 (드래그로 조정)';
+    else if(gameMode==='local') msg=(turn===1?'⚫ 흑':'⚪ 백')+' 차례 — 놓을 곳을 탭하세요';
+    else if(myTurn) msg='내 차례 — 놓을 곳을 탭하세요';
+    else msg = gameMode==='ai' ? 'AI가 생각 중...' : '상대방 차례를 기다리는 중...';
+    g.fillText(msg, W/2, 54);
+  }
+  // 바둑판
+  g.fillStyle='#2e2415';
+  g.fillRect(WOOD.x-6, WOOD.y-6, WOOD.w+12, WOOD.h+12);
+  g.fillStyle='#d9a05b';
+  g.fillRect(WOOD.x, WOOD.y, WOOD.w, WOOD.h);
+  g.strokeStyle='#a8763a'; g.lineWidth=1;
+  for(let i=0;i<N;i++){
+    g.beginPath(); g.moveTo(px(i), py(0)); g.lineTo(px(i), py(N-1)); g.stroke();
+    g.beginPath(); g.moveTo(px(0), py(i)); g.lineTo(px(N-1), py(i)); g.stroke();
+  }
+  // 화점
+  g.fillStyle='#a8763a';
+  [[3,3],[11,3],[3,11],[11,11],[7,7]].forEach(([a,b])=>{
+    g.beginPath(); g.arc(px(a), py(b), 3, 0, 7); g.fill();
+  });
+  // 고스트 십자선
+  if(ghost && !gameOver){
+    g.strokeStyle='rgba(217,83,79,0.55)'; g.lineWidth=1.5;
+    g.beginPath(); g.moveTo(px(ghost.x), py(0)-8); g.lineTo(px(ghost.x), py(N-1)+8); g.stroke();
+    g.beginPath(); g.moveTo(px(0)-8, py(ghost.y)); g.lineTo(px(N-1)+8, py(ghost.y)); g.stroke();
+  }
+  // 돌
+  for(const m of moves) drawStone(m.x, m.y, m.c, 1);
+  // 마지막 수 표시
+  if(moves.length && !winLine){
+    const m=moves[moves.length-1];
+    g.fillStyle='#ff3b30';
+    g.beginPath(); g.arc(px(m.x), py(m.y), 3.2, 0, 7); g.fill();
+  }
+  // 고스트 돌 + 확정 링
+  if(ghost && !gameOver){
+    drawStone(ghost.x, ghost.y, gameMode==='local'?turn:myColor, 0.5);
+    g.strokeStyle='#ff3b30'; g.lineWidth=2;
+    g.beginPath(); g.arc(px(ghost.x), py(ghost.y), STONE_R+3.5, 0, 7); g.stroke();
+  }
+  // 승리 라인
+  if(winLine){
+    const a=winLine[0], b=winLine[winLine.length-1];
+    g.strokeStyle='rgba(0,0,0,0.5)'; g.lineWidth=7; g.lineCap='round';
+    g.beginPath(); g.moveTo(px(a[0]), py(a[1])); g.lineTo(px(b[0]), py(b[1])); g.stroke();
+    g.strokeStyle='#ff3b30'; g.lineWidth=4;
+    g.beginPath(); g.moveTo(px(a[0]), py(a[1])); g.lineTo(px(b[0]), py(b[1])); g.stroke();
+  }
+}
+
+// ═══════ 입력 (고스트 → 확정 2단계) ═══════
+function canControl(){
+  if(gameOver) return false;
+  if(gameMode==='local') return true;
+  return turn===myColor;
+}
+function cellFromEvt(e){
+  const r=cv.getBoundingClientRect();
+  const cx=(e.clientX-r.left)*W/r.width, cy=(e.clientY-r.top)*H/r.height;
+  const x=Math.round((cx-GX)/CELL), y=Math.round((cy-GY)/CELL);
+  if(!inB(x,y)) return null;
+  return {x,y};
+}
+function commitGhost(){
+  if(!ghost || !canControl()) return;
+  const c = gameMode==='local' ? turn : myColor;
+  place(ghost.x, ghost.y, c, true);
+}
+cv.addEventListener('pointerdown', e=>{
+  ensureAudio();
+  if(!canControl()) return;
+  const c=cellFromEvt(e);
+  if(!c) return;
+  dragging=true;
+  try{ cv.setPointerCapture(e.pointerId); }catch(err){}
+  confirmCand = !!(ghost && c.x===ghost.x && c.y===ghost.y);
+  if(board[c.y][c.x]===0){ ghost=c; }
+  else if(!confirmCand){ buzz(); }
+});
+cv.addEventListener('pointermove', e=>{
+  if(!dragging || !canControl()) return;
+  const c=cellFromEvt(e);
+  if(c && board[c.y][c.x]===0){
+    if(ghost && (c.x!==ghost.x || c.y!==ghost.y)) confirmCand=false;
+    ghost=c;
+  }
+});
+cv.addEventListener('pointerup', ()=>{
+  if(!dragging) return;
+  dragging=false;
+  if(confirmCand && ghost){ commitGhost(); return; }
+  $('b-confirm').style.display = (ghost && canControl()) ? 'block' : 'none';
+});
+
+// ═══════ AI (공격+수비 패턴 점수) ═══════
+function lineScore(x,y,c){
+  // (x,y)에 c를 놓았다고 가정한 4방향 패턴 점수 합
+  let total=0;
+  for(const [dx,dy] of DIRS){
+    let n1=0, i=1;
+    while(inB(x+dx*i, y+dy*i) && board[y+dy*i][x+dx*i]===c){ n1++; i++; }
+    const open1 = inB(x+dx*i, y+dy*i) && board[y+dy*i][x+dx*i]===0;
+    let n2=0; i=1;
+    while(inB(x-dx*i, y-dy*i) && board[y-dy*i][x-dx*i]===c){ n2++; i++; }
+    const open2 = inB(x-dx*i, y-dy*i) && board[y-dy*i][x-dx*i]===0;
+    const len=n1+n2+1, opens=(open1?1:0)+(open2?1:0);
+    if(len>=5) total+=1000000;                                   // 오목 완성
+    else if(len===4) total+= opens===2 ? 100000 : (opens===1 ? 12000 : 0);  // 열린4/닫힌4
+    else if(len===3) total+= opens===2 ? 6000   : (opens===1 ? 600   : 0);  // 열린3/닫힌3
+    else if(len===2) total+= opens===2 ? 150    : (opens===1 ? 30    : 0);
+    else total+= opens===2 ? 15 : (opens===1 ? 3 : 0);
+  }
+  return total;
+}
+function aiMove(){
+  if(gameOver || gameMode!=='ai') return;
+  const aiC = myColor===1 ? 2 : 1;
+  if(turn!==aiC) return;
+  let cand=[];
+  if(moves.length===0){ cand=[{x:7,y:7}]; }
+  else {
+    const seen=new Set();
+    for(const m of moves){
+      for(let dy=-2;dy<=2;dy++) for(let dx=-2;dx<=2;dx++){
+        const x=m.x+dx, y=m.y+dy;
+        if(!inB(x,y) || board[y][x]!==0) continue;
+        const k=y*N+x;
+        if(seen.has(k)) continue;
+        seen.add(k); cand.push({x,y});
+      }
+    }
+  }
+  if(!cand.length) return;
+  let best=cand[0], bs=-1;
+  for(const c of cand){
+    const s = lineScore(c.x, c.y, aiC)            // 공격
+            + 0.9*lineScore(c.x, c.y, myColor)    // 수비 (약간 낮은 가중치 → 이기러 감)
+            + (7-Math.max(Math.abs(c.x-7), Math.abs(c.y-7)))*0.5
+            + Math.random();                      // 동점 랜덤 타이브레이크
+    if(s>bs){ bs=s; best=c; }
+  }
+  place(best.x, best.y, aiC, false);
+}
+
+// ═══════ TurnNet — 재사용 가능한 턴제 네트워크 모듈 ═══════
+class TurnNet {
+  constructor(url, key){
+    this.sb = window.supabase.createClient(url, key);
+    this.ch = null; this.handlers = {}; this.role = null;
+  }
+  on(type, fn){ this.handlers[type]=fn; }
+  _route(payload){ const h=this.handlers[payload.t]; if(h) h(payload.d); }
+  async open(code, role){
+    this.role = role;
+    this.ch = this.sb.channel('omok-'+code, {
+      config:{ broadcast:{self:false}, presence:{key:role} }
+    });
+    this.ch.on('broadcast', {event:'m'}, ({payload})=>this._route(payload));
+    this.ch.on('presence', {event:'sync'}, ()=>{
+      const st = this.ch.presenceState();
+      const n = Object.keys(st).length;
+      if(this.handlers._presence) this.handlers._presence(n, st);
+    });
+    return new Promise((res,rej)=>{
+      const to=setTimeout(()=>rej(new Error('연결 시간 초과')), 10000);
+      this.ch.subscribe(async (status)=>{
+        if(status==='SUBSCRIBED'){
+          clearTimeout(to);
+          await this.ch.track({role, at:Date.now()});
+          res();
+        } else if(status==='CHANNEL_ERROR'||status==='TIMED_OUT'){
+          clearTimeout(to); rej(new Error('연결 실패: '+status));
+        }
+      });
+    });
+  }
+  send(type, data){ if(this.ch) this.ch.send({type:'broadcast', event:'m', payload:{t:type, d:data}}); }
+  close(){ if(this.ch){ this.sb.removeChannel(this.ch); this.ch=null; } }
+}
+
+// ═══════ 온라인 게임 흐름 ═══════
+const CODE_CHARS='ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+function makeCode(){ let c=''; for(let i=0;i<4;i++) c+=CODE_CHARS[Math.floor(Math.random()*CODE_CHARS.length)]; return c; }
+
+async function createRoom(){
+  roomCode = makeCode();
+  net = new TurnNet(SUPA_URL, SUPA_KEY);
+  try{
+    await net.open(roomCode, 'host');
+  }catch(err){ toast('연결 실패: '+err.message); return; }
+  myColor=1;                                   // 호스트 = 흑 선공
+  document.getElementById('wait-code').textContent = roomCode;
+  show('scr-wait');
+  net.on('_presence', (n)=>{
+    if(n>=2){ net.send('start', {}); startOnlineGame(); }
+  });
+}
+async function joinRoom(code){
+  roomCode = code.toUpperCase().trim();
+  if(roomCode.length!==4){ toast('4자리 코드를 입력하세요'); return; }
+  net = new TurnNet(SUPA_URL, SUPA_KEY);
+  try{
+    await net.open(roomCode, 'guest');
+  }catch(err){ toast('연결 실패: '+err.message); return; }
+  myColor=2;                                   // 게스트 = 백
+  toast('입장! 호스트 확인 중...');
+  net.on('_presence', (n)=>{ if(n>=2){ startOnlineGame(); } });
+}
+function wireGameNet(){
+  net.on('move', d=>{
+    if(gameOver) return;
+    const opp = myColor===1 ? 2 : 1;
+    if(turn!==opp) return;
+    if(typeof d.n==='number' && d.n!==moves.length) toast('⚠️ 동기화 어긋남 감지');
+    place(d.x, d.y, opp, false);
+  });
+  net.on('rematch', ()=>{
+    rematchOpp=true; toast('상대가 재대결을 원합니다!');
+    if(rematchMe) restartOnline();
+  });
+  net.on('start', ()=>{});
+  net.on('bye', ()=>{ toast('상대방이 나갔습니다'); });
+  net.on('_presence', (n)=>{
+    if(n<2 && gameMode==='online' && !gameOver){
+      toast('상대방 연결이 끊겼습니다');
+    }
+  });
+}
+function startOnlineGame(){
+  gameMode='online';
+  resetGame();
+  wireGameNet();
+  show('scr-game');
+  updateHud();
+  toast(myColor===1 ? '대국 시작! ⚫ 흑 선공 (나)' : '대국 시작! 상대(⚫ 흑) 선공');
+}
+function restartOnline(){
+  resetGame();
+  updateHud();
+  toast('재대결 시작!');
+}
+
+// ═══════ UI 흐름 ═══════
+const $=id=>document.getElementById(id);
+function show(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
+  document.getElementById(id).classList.add('on');
+}
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('on');
+  clearTimeout(t._tm); t._tm=setTimeout(()=>t.classList.remove('on'), 2600);
+}
+function updateHud(){
+  const L=$('hud-left'), R=$('hud-right');
+  const ts = turn===1 ? '⚫' : '⚪';
+  if(gameOver && winLine){ L.textContent=''; }
+  else if(gameMode==='local') L.textContent = ts+(turn===1?' 흑':' 백')+' 차례';
+  else {
+    const who = turn===myColor ? '나' : (gameMode==='ai' ? 'AI' : '상대');
+    L.textContent = ts+' '+who+' 차례';
+  }
+  R.textContent = moves.length+'수';
+  $('hud-room').textContent = gameMode==='online' ? '방 '+roomCode : '';
+}
+function showResult(winner){
+  gameOver=true;
+  ghost=null; $('b-confirm').style.display='none';
+  const title=$('ov-title'), sub=$('ov-sub');
+  let won=false;
+  if(winner===0){
+    title.textContent='🤝 무승부'; title.style.color='#f0e8d8';
+    sub.textContent='바둑판이 가득 찼습니다. 한 판 더?';
+  } else if(gameMode==='local'){
+    title.textContent = winner===1 ? '⚫ 흑 승리!' : '⚪ 백 승리!';
+    title.style.color='#e8a33d';
+    sub.textContent = moves.length+'수 만에 오목 완성! 한 판 더?';
+    won=true;
+  } else {
+    won = winner===myColor;
+    title.textContent = won ? '🏆 승리!' : '😢 패배...';
+    title.style.color = won ? '#e8a33d' : '#9a8f7a';
+    sub.textContent = won ? moves.length+'수 만에 오목을 완성했습니다!' : '다음 판엔 이길 수 있어요';
+  }
+  if(won) winSnd();
+  $('b-rematch').textContent = gameMode==='online' ? '재대결 신청' : '다시 한 판';
+  updateHud();
+  // 승리 라인을 잠깐 보여준 뒤 오버레이 표시
+  setTimeout(()=>{ if(gameOver) $('overlay').classList.add('on'); }, 1000);
+}
+
+// ═══════ 버튼 바인딩 ═══════
+$('b-ai').onclick = ()=>{ ensureAudio(); gameMode='ai'; myColor=1; resetGame(); show('scr-game'); updateHud(); };
+$('b-local').onclick = ()=>{ ensureAudio(); gameMode='local'; resetGame(); show('scr-game'); updateHud(); };
+$('b-online').onclick = ()=>{
+  ensureAudio();
+  if(!SUPA_URL){
+    $('online-note').innerHTML='⚠️ 온라인 서버 설정 전입니다.<br>혼자 연습·한 폰 대결은 바로 가능해요!';
+    show('scr-online');
+    $('b-create').disabled=true; $('b-join').disabled=true;
+    return;
+  }
+  $('b-create').disabled=false; $('b-join').disabled=false;
+  $('online-note').textContent='';
+  show('scr-online');
+};
+$('b-create').onclick = createRoom;
+$('b-join').onclick = ()=>joinRoom($('in-code').value);
+$('b-back1').onclick = ()=>show('scr-menu');
+$('b-back2').onclick = ()=>{ if(net) net.close(); net=null; show('scr-menu'); };
+$('b-share').onclick = async ()=>{
+  const url = location.origin+location.pathname+'?room='+roomCode;
+  if(navigator.share){
+    try{ await navigator.share({title:'오목 대전', text:'오목 한 판 붙자! ⚫⚪', url}); }catch(e){}
+  } else {
+    try{ await navigator.clipboard.writeText(url); toast('링크가 복사됐습니다! 카톡에 붙여넣으세요'); }
+    catch(e){ toast('링크: '+url); }
+  }
+};
+$('b-confirm').onclick = ()=>{ ensureAudio(); commitGhost(); };
+$('b-rematch').onclick = ()=>{
+  if(gameMode==='online'){
+    rematchMe=true; net.send('rematch',{});
+    if(rematchOpp) restartOnline();
+    else { $('ov-sub').textContent='상대의 수락을 기다리는 중...'; }
+  } else {
+    resetGame(); updateHud();
+  }
+};
+$('b-exit').onclick = ()=>{
+  if(net){ net.send('bye',{}); net.close(); net=null; }
+  $('overlay').classList.remove('on');
+  show('scr-menu');
+};
+
+// URL로 방 입장 (?room=CODE)
+window.addEventListener('load', ()=>{
+  const code = new URLSearchParams(location.search).get('room');
+  if(code && SUPA_URL){
+    show('scr-online');
+    $('in-code').value = code.toUpperCase();
+    setTimeout(()=>joinRoom(code), 400);
+  }
+});
+
+// ═══════ 메인 루프 ═══════
+function loop(){
+  draw();
+  requestAnimationFrame(loop);
+}
+resetGame();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
