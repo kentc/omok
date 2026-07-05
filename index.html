@@ -508,6 +508,7 @@ function wireGameNet(){
   net.on('rematch', ()=>{
     rematchOpp=true; toast('상대가 재대결을 원합니다!');
     if(rematchMe) restartOnline();
+    else { const b=document.getElementById('b-rematch'); b.textContent='✅ 재대결 수락!'; }
   });
   net.on('start', ()=>{});
   net.on('bye', ()=>{ toast('상대방이 나갔습니다'); });
@@ -575,6 +576,7 @@ function showResult(winner){
   }
   if(won) winSnd();
   $('b-rematch').textContent = gameMode==='online' ? '재대결 신청' : '다시 한 판';
+  $('b-rematch').disabled=false;
   updateHud();
   // 승리 라인을 잠깐 보여준 뒤 오버레이 표시
   setTimeout(()=>{ if(gameOver) $('overlay').classList.add('on'); }, 1000);
@@ -613,7 +615,11 @@ $('b-rematch').onclick = ()=>{
   if(gameMode==='online'){
     rematchMe=true; net.send('rematch',{});
     if(rematchOpp) restartOnline();
-    else { $('ov-sub').textContent='상대의 수락을 기다리는 중...'; }
+    else {
+      $('ov-sub').textContent='상대의 수락을 기다리는 중...';
+      $('b-rematch').textContent='⏳ 수락 대기 중...';
+      $('b-rematch').disabled=true;
+    }
   } else {
     resetGame(); updateHud();
   }
