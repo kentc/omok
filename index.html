@@ -476,15 +476,16 @@ class TurnNet {
     });
   }
   send(type, data){ if(this.ch) this.ch.send({type:'broadcast', event:'m', payload:{t:type, d:data}}); }
-  close(){ if(this.ch){ this.sb.removeChannel(this.ch); this.ch=null; } }
+  state(){ return this.ch ? this.ch.presenceState() : {}; }
+  close(){ if(this.ch){ const c=this.ch; this.ch=null; try{ c.untrack().catch(()=>{}); }catch(e){} setTimeout(()=>this.sb.removeChannel(c), 300); } }
 }
 
 // ═══════ 온라인 게임 흐름 ═══════
 const CODE_CHARS='ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 function makeCode(){ let c=''; for(let i=0;i<4;i++) c+=CODE_CHARS[Math.floor(Math.random()*CODE_CHARS.length)]; return c; }
 
-async function createRoom(){
-  roomCode = makeCode();
+async function createRoom(forceCode){
+  roomCode = (typeof forceCode==='string' && forceCode) ? forceCode : makeCode();
   net = new TurnNet(SUPA_URL, SUPA_KEY);
   try{
     await net.open(roomCode, 'host');
@@ -506,6 +507,14 @@ async function joinRoom(code){
   myColor=2;                                   // 게스트 = 백
   toast('입장! 호스트 확인 중...');
   net.on('_presence', (n)=>{ if(n>=2){ startOnlineGame(); } });
+  setTimeout(()=>{                   // 3초 내 호스트 부재 → 이 방코드의 방장으로 전환해 대기
+    if(gameMode==='online' || !net) return;
+    if(!Object.keys(net.state()).includes('host')){
+      net.close(); net=null;
+      toast('방장이 자리에 없어 내가 방장이 됩니다');
+      setTimeout(()=>createRoom(roomCode), 2500);   // 이전 guest presence 소멸 대기
+    }
+  }, 3000);
 }
 function wireGameNet(){
   net.on('move', d=>{
