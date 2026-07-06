@@ -52,6 +52,12 @@
     font-size:14px; font-weight:700;
   }
   .hud .roomtag{font-weight:400; color:var(--dim); font-size:12px; letter-spacing:.1em}
+  #topbar{display:flex; gap:8px; width:100%; max-width:480px; margin:0 auto; padding:8px 8px 6px}
+  #b-menu{flex:0 0 auto; padding:0 14px; border-radius:10px; border:1px solid #4a4a58; background:#262630; color:#e8ecf5; font-weight:700; font-size:14px; cursor:pointer}
+  #turnbar{flex:1; display:flex; align-items:center; justify-content:center; min-height:44px; border-radius:10px; font-weight:800; font-size:17px; background:#1c1c24; color:#777; transition:background .25s,color .25s}
+  #turnbar.me{background:#1e8a47; color:#fff; animation:tbp 1.3s ease-in-out infinite}
+  #turnbar.opp{background:#26262f; color:#9aa0b0}
+  @keyframes tbp{0%,100%{box-shadow:0 0 0 0 rgba(70,230,130,.6)}50%{box-shadow:0 0 0 7px rgba(70,230,130,0)}}
   #b-confirm{
     display:none; position:absolute; left:50%; transform:translateX(-50%);
     bottom:calc(10px + env(safe-area-inset-bottom));
@@ -116,6 +122,10 @@
 
 <!-- ══════ 게임 ══════ -->
 <div id="scr-game" class="screen" style="padding:0">
+  <div id="topbar">
+    <button id="b-menu">🏠 메뉴</button>
+    <div id="turnbar"></div>
+  </div>
   <div id="gamewrap">
     <canvas id="cv"></canvas>
     <div class="hud">
@@ -554,6 +564,18 @@ function updateHud(){
   }
   R.textContent = moves.length+'수';
   $('hud-room').textContent = gameMode==='online' ? '방 '+roomCode : '';
+  const tb=document.getElementById('turnbar');
+  if(tb){
+    let cls='', txt='';
+    if(gameOver){ txt='게임 종료'; }
+    else if(gameMode==='local'){ cls='me'; txt=(turn===1?'⚫ 흑 차례':'⚪ 백 차례'); }
+    else if(gameMode){
+      const mine=(turn===myColor);
+      cls=mine?'me':'opp';
+      txt=mine?'🟢 내 차례!':(gameMode==='ai'?'🤖 AI 차례...':'⏳ 상대 차례...');
+    }
+    tb.className=cls; tb.textContent=txt;
+  }
 }
 function showResult(winner){
   gameOver=true;
@@ -623,6 +645,12 @@ $('b-rematch').onclick = ()=>{
   } else {
     resetGame(); updateHud();
   }
+};
+$('b-menu').onclick = ()=>{
+  if(gameMode==='online' && !gameOver && !confirm('대국을 나가시겠습니까?')) return;
+  if(net){ net.send('bye',{}); net.close(); net=null; }
+  $('overlay').classList.remove('on');
+  show('scr-menu');
 };
 $('b-exit').onclick = ()=>{
   if(net){ net.send('bye',{}); net.close(); net=null; }
