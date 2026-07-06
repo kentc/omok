@@ -82,6 +82,11 @@
   }
   @keyframes sp{to{transform:rotate(360deg)}}
   @media (prefers-reduced-motion: reduce){ .spin{animation-duration:2s} }
+#board{display:none; position:fixed; inset:0; background:rgba(0,0,0,.78); z-index:60; align-items:center; justify-content:center}
+#board.on{display:flex}
+#board-in{background:#14141c; border:1px solid #2e2e3a; border-radius:14px; padding:20px; width:min(320px,86vw); text-align:center; max-height:80vh; overflow-y:auto}
+.brow{display:flex; justify-content:space-between; padding:6px 4px; border-bottom:1px solid #1e1e28; font-size:14px}
+.brow.me{color:#e8a33d; font-weight:700}
 </style>
 </head>
 <body>
@@ -91,6 +96,7 @@
   <h1>오목 <span class="go">대전</span></h1>
   <div class="sub">FIVE IN A ROW · 턴제 대전</div>
   <button class="btn primary" id="b-online">🌐 온라인 대전 — 친구와 한 판</button>
+  <button class="btn" id="b-board">🏆 연승 랭킹</button>
   <button class="btn" id="b-local">📱 한 폰으로 대결</button>
   <button class="btn" id="b-ai">🤖 혼자 연습 (AI)</button>
   <div class="note">가로·세로·대각선으로<br>먼저 다섯 개를 이으면 승리!</div>
@@ -138,10 +144,18 @@
       <div class="big" id="ov-title"></div>
       <div class="small" id="ov-sub"></div>
       <button class="btn primary" id="b-rematch" style="max-width:260px">다시 한 판</button>
+      <button class="btn ghost" id="b-board-ov" style="max-width:260px">🏆 연승 랭킹</button>
       <button class="btn ghost" id="b-exit" style="max-width:260px">메뉴로 나가기</button>
     </div>
   </div>
 </div>
+
+<div id="board"><div id="board-in">
+  <div style="font-weight:800;font-size:18px;margin-bottom:10px">🏆 연승 랭킹 TOP 10</div>
+  <div id="board-list"></div>
+  <div id="board-my" style="margin-top:8px;color:#8a8f9d;font-size:13px"></div>
+  <button class="btn" id="b-board-close" style="margin-top:12px">닫기</button>
+</div></div>
 
 <div id="toast"></div>
 
@@ -606,6 +620,7 @@ function showResult(winner){
     sub.textContent = won ? moves.length+'수 만에 오목을 완성했습니다!' : '다음 판엔 이길 수 있어요';
   }
   if(won) winSnd();
+  if(gameMode!=='local') lbStreak(won);
   $('b-rematch').textContent = gameMode==='online' ? '재대결 신청' : '다시 한 판';
   $('b-rematch').disabled=false;
   updateHud();
@@ -661,6 +676,52 @@ $('b-menu').onclick = ()=>{
   $('overlay').classList.remove('on');
   show('scr-menu');
 };
+
+// ═══════ 연승 랭킹 (Supabase arcade_scores) ═══════
+const LB_GAME='omok';
+let _lbc=null;
+function lbClient(){ if(!_lbc && SUPA_URL) _lbc=window.supabase.createClient(SUPA_URL,SUPA_KEY); return _lbc; }
+function lbNick(){ return localStorage.getItem('arcade_nick')||''; }
+const lbEsc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function lbSubmit(score){
+  const c=lbClient(); if(!c) return;
+  let nick=lbNick();
+  if(!nick){
+    nick=(prompt('랭킹에 표시할 닉네임 (최대 8자)')||'').trim().slice(0,8);
+    if(!nick) return;
+    localStorage.setItem('arcade_nick', nick);
+  }
+  try{ await c.from('arcade_scores').insert({game:LB_GAME, nick, score, mode:gameMode||'ai'}); }catch(e){}
+}
+function lbStreak(won){
+  let st=+(localStorage.getItem(LB_GAME+'_streak')||0);
+  st = won ? st+1 : 0;
+  localStorage.setItem(LB_GAME+'_streak', String(st));
+  const best=+(localStorage.getItem(LB_GAME+'_best')||0);
+  if(st>best){
+    localStorage.setItem(LB_GAME+'_best', String(st));
+    toast('🏆 최고 연승 갱신: '+st+'연승!');
+    lbSubmit(st);
+  }
+}
+async function lbShow(){
+  const el=$('board-list'); el.textContent='불러오는 중...'; $('board').classList.add('on');
+  const st=+(localStorage.getItem(LB_GAME+'_streak')||0), best=+(localStorage.getItem(LB_GAME+'_best')||0);
+  $('board-my').textContent = best ? '내 최고 '+best+'연승 (현재 '+st+'연승)' : '';
+  const c=lbClient();
+  if(!c){ el.textContent='온라인 서버 설정 전입니다'; return; }
+  try{
+    const {data,error}=await c.from('arcade_scores').select('nick,score')
+      .eq('game',LB_GAME).order('score',{ascending:false}).limit(10);
+    if(error) throw error;
+    el.innerHTML = (data&&data.length)
+      ? data.map((r,i)=>`<div class="brow${r.nick===lbNick()?' me':''}"><span>${i+1}. ${lbEsc(r.nick)}</span><span>${r.score}연승</span></div>`).join('')
+      : '아직 기록이 없습니다 — 1등을 노려보세요!';
+  }catch(e){ el.textContent='랭킹 서버 준비 중입니다'; }
+}
+$('b-board').onclick=lbShow;
+$('b-board-ov').onclick=lbShow;
+$('b-board-close').onclick=()=>$('board').classList.remove('on');
 $('b-exit').onclick = ()=>{
   if(net){ net.send('bye',{}); net.close(); net=null; }
   $('overlay').classList.remove('on');
